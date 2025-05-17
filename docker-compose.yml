@@ -12,6 +12,9 @@ services:
       - "5432:5432" # Expose for local inspection if needed, not required for inter-container communication
     networks:
       - app-network
+    profiles:
+      - debug
+      - production
     restart: unless-stopped
 
   web:
@@ -33,6 +36,34 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+    profiles:
+      - production
+
+  web_debug:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: flask_app_web
+    command: python3 app.py
+    volumes:
+      - .:/debug # Mount current directory to /app for development (optional for production)
+    ports:
+      - "80:5000" # Expose port for Nginx, not directly to host
+    depends_on:
+      - db
+    env_file:
+      - .env
+    working_dir: /debug
+    environment:
+      - POSTGRES_HOST=db
+      - FLASK_DEBUG=1
+      - FLASK_APP=app.py
+    networks:
+      - app-network
+    restart: unless-stopped
+    profiles:
+      - debug
+
 
   nginx:
     build:
@@ -45,6 +76,8 @@ services:
       - web
     networks:
       - app-network
+    profiles:
+      - production
     restart: unless-stopped
 
 volumes:

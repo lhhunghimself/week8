@@ -2,9 +2,11 @@
 #fetch data from the api
 
 import requests, os, json
+import dotenv
+dotenv.load_dotenv()    
 
 #get key from environment variable
-api_key = os.getenv('API_KEY')
+api_key = os.getenv('TRIPADVISOR_API_KEY')
 
 def get_city_coordinates(city, state="WA"):
     """

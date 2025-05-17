@@ -33,14 +33,6 @@
                     <div class="accordion-body">
                         <!-- Carousel with cards -->
                         <div id="businessCarousel" class="carousel slide" data-bs-ride="carousel">
-                            <!-- Carousel indicators -->
-                            <div class="carousel-indicators">
-                                {% for business in location_data %}
-                                    <button type="button" data-bs-target="#businessCarousel" data-bs-slide-to="{{ loop.index0 }}" 
-                                        {% if loop.first %}class="active" aria-current="true"{% endif %} 
-                                        aria-label="Slide {{ loop.index }}"></button>
-                                {% endfor %}
-                            </div>
                             
                             <!-- Carousel items -->
                             <div class="carousel-inner">
