@@ -20,6 +20,7 @@ load_dotenv()
 app = Flask(__name__)
 # Use the SECRET_KEY from environment variables for session security and Flask-Dance
 app.secret_key = os.getenv('SECRET_KEY', 'fallback_secret_key_if_not_set') 
+MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN')
 
 # Configure SQLAlchemy for PostgreSQL
 DB_USER = os.getenv('POSTGRES_USER', 'defaultuser')
@@ -279,7 +280,8 @@ def index():
                           city=session['city'], 
                           state=session['state'], 
                           category=session['category'], 
-                          location_data=location_data)
+                          location_data=location_data,
+                          mapbox_access_token=MAPBOX_ACCESS_TOKEN)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

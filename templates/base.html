@@ -12,6 +12,10 @@
             padding-top: 56px; /* Adds space at top of body to account for fixed navbar */
         }
     </style>
+    
+    {% block head_content %}
+    <!-- This block will be replaced or extended by child templates -->
+    {% endblock %}
 </head>
 <body>
     <!-- Navigation Bar - The main site navigation header -->

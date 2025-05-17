@@ -175,6 +175,8 @@ def fetch_tripadvisor_data(city, state="WA", category="restaurants"):
             location_info['address'] = location_data.get('address_obj', {}) \
                                                   .get('address_string', '')
             location_info['url']     = location_data.get('web_url', '')
+            location_info['latitude'] = location_data.get('latitude', '')
+            location_info['longitude'] = location_data.get('longitude', '')
         
         # —————————————
         # PHOTO DATA

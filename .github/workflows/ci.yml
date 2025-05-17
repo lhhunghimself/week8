@@ -1,0 +1,59 @@
+name: CI Testing
+
+on:
+  workflow_dispatch:
+    # Allows manual triggering of the workflow
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Install Docker Compose
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y docker-compose
+        docker-compose --version
+    
+    - name: Start services with docker-compose
+      run: |
+        docker-compose --profile debug up -d
+    
+    - name: Wait for services to be ready
+      run: |
+        # Wait for Flask app to become available
+        echo "Waiting for Flask app to start..."
+        timeout=60
+        counter=0
+        while ! curl -s http://localhost:80 > /dev/null; do
+          if [ $counter -eq $timeout ]; then
+            echo "Timed out waiting for Flask app"
+            docker-compose logs
+            exit 1
+          fi
+          echo "Still waiting for Flask app to be available... ($counter/$timeout)"
+          sleep 2
+          counter=$((counter + 2))
+        done
+        echo "Flask app is available!"
+    
+    - name: Test connection to Flask
+      run: |
+        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80)
+        if [ "$response" -ne 200 ]; then
+          echo "Failed to connect to Flask app, got HTTP status $response"
+          docker-compose logs
+          exit 1
+        fi
+        echo "Successfully connected to Flask app!"
+    
+    - name: Clean up
+      run: |
+        docker-compose --profile debug down
+      if: always() 

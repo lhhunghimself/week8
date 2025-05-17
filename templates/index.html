@@ -1,5 +1,50 @@
 {% extends "base.html" %}
 
+{% block head_content %}
+    {{ super() }}
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css' rel='stylesheet' />
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js'></script>
+    <style>
+        #map {
+            height: 500px; /* Adjust as needed */
+            width: 100%;
+        }
+        .mapboxgl-popup-content {
+            text-align: center;
+        }
+        .mapboxgl-popup-content img {
+            max-width: 150px;
+            height: auto;
+            margin-bottom: 5px;
+        }
+        .mapboxgl-popup-content .no-photo {
+            width: 150px;
+            height: 100px;
+            background-color: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #777;
+            margin-bottom: 5px;
+        }
+        /* Tooltip styling */
+        .marker-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            pointer-events: none;
+            transform: translate(-50%, -100%);
+            margin-top: -10px;
+            z-index: 9999;
+            display: none;
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
     <!-- Main Content -->
     <div class="container mt-4">
@@ -16,8 +61,7 @@
                 </h2>
                 <div id="collapseMap" class="accordion-collapse collapse" aria-labelledby="headingMap" data-bs-parent="#tripAdvisorAccordion">
                     <div class="accordion-body">
-                        <!-- Map content will go here -->
-                        <p>Map placeholder</p>
+                        <div id='map'></div>
                     </div>
                 </div>
             </div>
@@ -115,4 +159,122 @@
             </div>
         </div>
     </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set Mapbox access token directly without any JSON parsing
+        mapboxgl.accessToken = '{{ mapbox_access_token }}';
+        
+        // Get the location data
+        const businesses = JSON.parse('{{ location_data|tojson|safe }}');
+        let map; // Declare map variable in a broader scope
+        let tooltipEl = null;
+
+        // Create tooltip element that we'll reuse
+        function createTooltip() {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'marker-tooltip';
+            document.body.appendChild(tooltip);
+            return tooltip;
+        }
+
+        // Function to initialize or update the map
+        function initializeMap() {
+            const mapContainer = document.getElementById('map');
+            if (!mapContainer) {
+                console.error('Map container not found');
+                return;
+            }
+
+            // Clear previous map instance if it exists
+            if (map) {
+                map.remove();
+            }
+            
+            // Create tooltip element if it doesn't exist
+            if (!tooltipEl) {
+                tooltipEl = createTooltip();
+            }
+            
+            let centerCoordinates = [-98.5795, 39.8283]; // Default to center of US
+            let zoomLevel = 3; // Default zoom level
+
+            if (businesses && businesses.length > 0 && businesses[0].latitude && businesses[0].longitude) {
+                centerCoordinates = [parseFloat(businesses[0].longitude), parseFloat(businesses[0].latitude)];
+                zoomLevel = 12; // Zoom in if we have a specific location
+            }
+
+            map = new mapboxgl.Map({
+                container: 'map',
+                style: 'mapbox://styles/mapbox/streets-v11',
+                center: centerCoordinates,
+                zoom: zoomLevel
+            });
+
+            map.on('load', () => {
+                if (businesses && businesses.length > 0) {
+                    businesses.forEach(business => {
+                        if (business.latitude && business.longitude) {
+                            let popupHtml = '<div>';
+                            if (business.photo) {
+                                popupHtml += `<img src="${business.photo}" alt="${business.name}">`;
+                            } else {
+                                popupHtml += '<div class="no-photo">No Photo</div>';
+                            }
+                            popupHtml += `<h6>${business.name}</h6>`;
+                            popupHtml += `<p>${business.address}</p>`;
+                            if (business.url) {
+                                popupHtml += `<a href="${business.url}" class="btn btn-sm btn-primary" target="_blank">Visit Website</a>`;
+                            }
+                            popupHtml += '</div>';
+
+                            // Create a standard marker
+                            const marker = new mapboxgl.Marker()
+                                .setLngLat([parseFloat(business.longitude), parseFloat(business.latitude)])
+                                .setPopup(new mapboxgl.Popup({ offset: 25 })
+                                    .setHTML(popupHtml))
+                                .addTo(map);
+                            
+                            // Add events for tooltip
+                            const markerEl = marker.getElement();
+                            markerEl.addEventListener('mouseenter', (e) => {
+                                tooltipEl.textContent = business.name;
+                                tooltipEl.style.display = 'block';
+                                
+                                // Position the tooltip above the marker
+                                const markerRect = markerEl.getBoundingClientRect();
+                                tooltipEl.style.left = `${markerRect.left + markerRect.width/2}px`;
+                                tooltipEl.style.top = `${markerRect.top - 10}px`;
+                            });
+                            
+                            markerEl.addEventListener('mouseleave', () => {
+                                tooltipEl.style.display = 'none';
+                            });
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Handle map resizing when accordion is shown
+        const mapCollapseElement = document.getElementById('collapseMap');
+        if (mapCollapseElement) {
+            mapCollapseElement.addEventListener('shown.bs.collapse', function () {
+                if (map) {
+                    map.resize();
+                } else {
+                    // Initialize map if it hasn't been already (e.g. if map panel is opened first)
+                    initializeMap();
+                }
+            });
+            // Initialize map if the accordion panel is already open on page load
+            if (mapCollapseElement.classList.contains('show')) {
+                initializeMap();
+            }
+        } else {
+            // If there's no accordion, initialize map directly (fallback)
+            // setTimeout(initializeMap, 100);
+        }
+    });
+    </script>
 {% endblock %}
