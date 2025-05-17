@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Cosmo Bootstrap Site</title>
+    <!-- Bootswatch Cosmo Theme - A customized version of Bootstrap with different styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/cosmo/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS (if needed) -->
+    <style>
+        body {
+            padding-top: 56px; /* Adds space at top of body to account for fixed navbar */
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar - The main site navigation header -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+        <!-- navbar - Base Bootstrap navigation styling
+             navbar-expand-lg - Expands horizontal menu at large breakpoint
+             navbar-dark - Light text on dark background
+             bg-primary - Primary color background (blue in Cosmo theme)
+             fixed-top - Navbar stays at top of screen while scrolling -->
+        
+        <div class="container">
+            <!-- container - Centers content with responsive padding -->
+            
+            <a class="navbar-brand" href="#">TripAdvisor reviews</a>
+            <!-- navbar-brand - Styling for the website's brand/logo -->
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <!-- navbar-toggler - Hamburger menu button that appears on smaller screens
+                     data-bs-toggle/target - JavaScript behavior to toggle the navigation menu -->
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <!-- collapse - Element will collapse on small screens and be shown/hidden by the toggler button -->
+                
+                <ul class="navbar-nav">
+                    <!-- navbar-nav - Styling for navigation list items -->
+                    
+                    <!-- Home link - Direct access to index page -->
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('index') }}">Home</a>
+                    </li>
+                    
+                    <!-- Only show these dropdown items when a user is logged in -->
+                    {% if current_user.is_authenticated %}
+                        <li class="nav-item dropdown">
+                            <!-- nav-item - Styling for navigation item
+                                 dropdown - Makes this a dropdown menu -->
+                            
+                            <a class="nav-link dropdown-toggle active" href="#" id="cityDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <!-- nav-link - Styling for navigation links
+                                     dropdown-toggle - Adds dropdown arrow indicator
+                                     active - Highlights the current page in navigation
+                                     data-bs-toggle="dropdown" - Activates dropdown behavior -->
+                                {{ city if city else 'City' }}
+                                <!-- Jinja2 template variable - Shows city name if available, else 'City' -->
+                            </a>
+                            
+                            <ul class="dropdown-menu" aria-labelledby="cityDropdown">
+                                <!-- dropdown-menu - Styling for dropdown content -->
+                                
+                                {% for city_option in ['Tacoma', 'Seattle'] %}
+                                    <li><a class="dropdown-item" href="{{ url_for('index', city=city_option, category=category) }}">{{ city_option }}</a></li>
+                                    <!-- dropdown-item - Styling for items in dropdown
+                                         url_for() - Flask function to generate route URLs -->
+                                {% endfor %}
+                            </ul>
+                        </li>
+                        
+                        <li class="nav-item dropdown">
+                            <!-- Second dropdown for category selection, structure same as city dropdown -->
+                            <a class="nav-link dropdown-toggle active" href="#" id="categoryDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                {{ category if category else 'Category' }}
+                            </a>
+                            <ul class="dropdown-menu" aria-labelledby="categoryDropdown">
+                                {% for category_option in ['restaurants', 'hotels', 'attractions'] %}
+                                    <li>
+                                        <a class="dropdown-item" href="{{ url_for('index', city=city, category=category_option) }}">
+                                            {{ category_option }}
+                                        </a>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </li>
+                    {% endif %}
+                </ul>
+                
+                <!-- User Authentication Section - Right side of navbar -->
+                <ul class="navbar-nav ms-auto">
+                    <!-- ms-auto - Margin-start auto (pushes this to the right side of navbar) -->
+                    
+                    {% if current_user.is_authenticated %}
+                        <!-- Display user info and logout link when logged in -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('profile') }}">Profile</a>
+                            <!-- Profile link that calls the profile route -->
+                        </li>
+                        <li class="nav-item">
+                            <span class="nav-link">Welcome, {{ current_user.username }}!</span>
+                            <!-- Displays personalized welcome message with username from current_user -->
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                            <!-- Logout link that calls the logout route -->
+                        </li>
+                    {% else %}
+                        <!-- If user is not logged in, show login and register links -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('register') }}">Register</a>
+                            <!-- Register link that calls the register route -->
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+                            <!-- Links to the login route -->
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages Container -->
+    <div class="container mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content - Will be replaced by content from extending templates -->
+    {% block content %}
+    {% endblock %}  
+
+    <!-- Footer -->
+    <footer class="bg-light py-4 mt-5">
+        <!-- bg-light - Light background color
+             py-4 - Padding on y-axis (top and bottom) size 4
+             mt-5 - Margin-top size 5 (creates space between content and footer) -->
+        
+        <div class="container">
+            <p class="text-center text-muted mb-0">© 2023 My Website. All rights reserved.</p>
+            <!-- text-center - Centers text horizontally
+                 text-muted - Grayed-out text color
+                 mb-0 - No margin-bottom (removes default paragraph margin) -->
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle with Popper - Required for interactive Bootstrap components -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

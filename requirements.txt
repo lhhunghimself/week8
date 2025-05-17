@@ -1,0 +1,20 @@
+#requirements.txt for latest flask
+Flask==3.0.1
+Flask-WTF==1.2.1
+Flask-Login==0.6.3
+SQLAlchemy==2.0.27
+Flask-SQLAlchemy==3.1.1  # ORM extension for Flask with SQLAlchemy support
+requests==2.31.0
+Werkzeug==3.0.1  # WSGI utility library for Python
+python-dotenv==0.21.0 # Or latest version
+Flask-Dance==7.0.0    # Or latest version
+gunicorn==21.2.0      # WSGI HTTP Server for UNIX
+psycopg2-binary==2.9.9 # PostgreSQL adapter for Python
+
+
+# Security packages
+Flask-Bcrypt==1.0.1    # For password hashing
+itsdangerous==2.1.2    # For securely signing data
+Flask-Talisman==1.1.0  # For security headers (HTTPS, CSP, etc.)
+email-validator==2.1.0 # For validating email addresses in forms
+PyJWT==2.8.0           # For JSON Web Tokens
