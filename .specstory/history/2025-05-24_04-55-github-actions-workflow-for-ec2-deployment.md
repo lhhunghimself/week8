@@ -102,3 +102,177 @@ Once you’ve committed this file and pushed, go to **Actions → CD → Run wor
 
 ---
 
+_**User**_
+
+I get the error "Run ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST << 'EOF'
+  ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST << 'EOF'
+    set -e
+    echo "REPO_DIR: $REPO_DIR"
+    # Clone if missing, otherwise update
+    if [ ! -d "$REPO_DIR" ]; then
+      git clone https://github.com/lhhunghimself/week8.git "$REPO_DIR"
+    fi
+    cd "$REPO_DIR"
+  
+    # Stop any running services
+    if [ -f docker-compose.yml ]; then
+      docker-compose down
+    fi
+  
+    # Pull latest and reset to main
+    git fetch --all
+    git reset --hard origin/main
+  
+    # Recreate .env from GitHub secrets
+    cat > .env << 'EOL'
+    FLASK_APP="app.py"
+    FLASK_DEBUG="0"
+    SECRET_KEY="***"
+    GITHUB_OAUTH_CLIENT_ID=""
+    GITHUB_OAUTH_CLIENT_SECRET=""
+    OAUTHLIB_INSECURE_TRANSPORT="1"
+    POSTGRES_USER="***"
+    POSTGRES_PASSWORD="***"
+    POSTGRES_DB="***"
+    POSTGRES_PORT="***"
+    MAPBOX_ACCESS_TOKEN="***"
+    TRIPADVISOR_API_KEY="***"
+    EOL
+  
+    # Build & launch in production profile
+    docker-compose up -d --build --remove-orphans --profile production
+  EOF 
+  shell: /usr/bin/bash -e {0}
+  env:
+    EC2_USER: ***
+    EC2_HOST: ***
+  
+    REPO_DIR: ***
+/home/runner/work/_temp/9ef5e237-0144-4e6c-915f-1a456920d661.sh: line 37: warning: here-document at line 1 delimited by end-of-file (wanted `EOF')
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Warning: Permanently added '***' (ED25519) to the list of known hosts.
+Welcome to Ubuntu 24.04.2 LTS (GNU/Linux 6.8.0-1024-aws x86_64)
+
+ * Documentation:  https://help.***.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://***.com/pro
+
+ System information as of Sat May 24 06:05:18 UTC 2025
+
+  System load:  0.0                Processes:             130
+  Usage of /:   28.4% of 28.02GB   Users logged in:       1
+  Memory usage: 47%                IPv4 address for enX0: 172.31.17.217
+  Swap usage:   0%
+
+ * Ubuntu Pro delivers the most comprehensive open source security and
+   compliance features.
+
+   https://***.com/aws/pro
+
+Expanded Security Maintenance for Applications is not enabled.
+
+43 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+Enable ESM Apps to receive additional future security updates.
+See https://***.com/esm or run: sudo pro status
+
+
+*** System restart required ***
+REPO_DIR: 
+fatal: could not create work tree dir '': No such file or directory
+Error: Process completed with exit code 128." 
+
+---
+
+_**Assistant**_
+
+# Fixing the Environment Variable Issue in GitHub Actions
+
+It looks like the environment variables aren't being properly passed into the SSH session. This is happening because of how heredocs work with single quotes (`'EOF'`). When you use single quotes, variables don't get expanded inside the heredoc.
+
+Let's fix the workflow file:
+
+```yaml:.github/workflows/cd.yml
+name: CD
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Install your private key into ~/.ssh/id_rsa
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      # 2. SSH into EC2 and run the deployment script
+      - name: Deploy to EC2
+        env:
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          REPO_DIR: ${{ secrets.REPO_DIR }}
+        run: |
+          # Pass environment variables directly to SSH command
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST "
+            set -e
+            
+            # Use the directly passed variables
+            REPO_DIR='$REPO_DIR'
+            echo \"REPO_DIR: \$REPO_DIR\"
+            
+            # Clone if missing, otherwise update
+            if [ ! -d \"\$REPO_DIR\" ]; then
+              git clone https://github.com/${{ github.repository }}.git \"\$REPO_DIR\"
+            fi
+            cd \"\$REPO_DIR\"
+
+            # Stop any running services
+            if [ -f docker-compose.yml ]; then
+              docker-compose down
+            fi
+
+            # Pull latest and reset to main
+            git fetch --all
+            git reset --hard origin/main
+
+            # Recreate .env from GitHub secrets
+            cat > .env << 'EOL'
+            FLASK_APP=\"app.py\"
+            FLASK_DEBUG=\"0\"
+            SECRET_KEY=\"${{ secrets.SECRET_KEY }}\"
+            GITHUB_OAUTH_CLIENT_ID=\"${{ secrets.GITHUB_OAUTH_CLIENT_ID }}\"
+            GITHUB_OAUTH_CLIENT_SECRET=\"${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}\"
+            OAUTHLIB_INSECURE_TRANSPORT=\"1\"
+            POSTGRES_USER=\"${{ secrets.POSTGRES_USER }}\"
+            POSTGRES_PASSWORD=\"${{ secrets.POSTGRES_PASSWORD }}\"
+            POSTGRES_DB=\"${{ secrets.POSTGRES_DB }}\"
+            POSTGRES_PORT=\"${{ secrets.POSTGRES_PORT }}\"
+            MAPBOX_ACCESS_TOKEN=\"${{ secrets.MAPBOX_ACCESS_TOKEN }}\"
+            TRIPADVISOR_API_KEY=\"${{ secrets.TRIPADVISOR_API_KEY }}\"
+            EOL
+
+            # Build & launch in production profile
+            docker-compose up -d --build --remove-orphans --profile production
+          "
+```
+
+## Key Changes Made
+
+1. **Removed the heredoc approach** (`<< 'EOF'`) entirely and replaced it with a quoted command string
+2. **Variables explicitly passed** - The environment variables are now directly passed into the command string
+3. **Proper escaping** - Double quotes are escaped with backslashes where needed
+4. **Explicitly setting REPO_DIR** - Setting the variable again inside the SSH session
+
+This approach ensures that your GitHub environment variables are correctly passed to the remote shell while maintaining the ability to set up the proper environment on your EC2 instance.
+
+If this still doesn't work, there's an alternative approach we could try using sshpass or writing a script file and copying it to the remote server first, then executing it.
+
+---
+

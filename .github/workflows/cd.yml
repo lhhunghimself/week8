@@ -23,14 +23,19 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           REPO_DIR: ${{ secrets.REPO_DIR }}
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST << 'EOF'
+          # Pass environment variables directly to SSH command
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST "
             set -e
-            echo "REPO_DIR: $REPO_DIR"
+            
+            # Use the directly passed variables
+            REPO_DIR='$REPO_DIR'
+            echo \"REPO_DIR: \$REPO_DIR\"
+            
             # Clone if missing, otherwise update
-            if [ ! -d "$REPO_DIR" ]; then
-              git clone https://github.com/${{ github.repository }}.git "$REPO_DIR"
+            if [ ! -d \"\$REPO_DIR\" ]; then
+              git clone https://github.com/${{ github.repository }}.git \"\$REPO_DIR\"
             fi
-            cd "$REPO_DIR"
+            cd \"\$REPO_DIR\"
 
             # Stop any running services
             if [ -f docker-compose.yml ]; then
@@ -43,20 +48,20 @@ jobs:
 
             # Recreate .env from GitHub secrets
             cat > .env << 'EOL'
-            FLASK_APP="app.py"
-            FLASK_DEBUG="0"
-            SECRET_KEY="${{ secrets.SECRET_KEY }}"
-            GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
-            GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
-            OAUTHLIB_INSECURE_TRANSPORT="1"
-            POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
-            POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
-            POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
-            POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}"
-            MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
-            TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+            FLASK_APP=\"app.py\"
+            FLASK_DEBUG=\"0\"
+            SECRET_KEY=\"${{ secrets.SECRET_KEY }}\"
+            GITHUB_OAUTH_CLIENT_ID=\"${{ secrets.GITHUB_OAUTH_CLIENT_ID }}\"
+            GITHUB_OAUTH_CLIENT_SECRET=\"${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}\"
+            OAUTHLIB_INSECURE_TRANSPORT=\"1\"
+            POSTGRES_USER=\"${{ secrets.POSTGRES_USER }}\"
+            POSTGRES_PASSWORD=\"${{ secrets.POSTGRES_PASSWORD }}\"
+            POSTGRES_DB=\"${{ secrets.POSTGRES_DB }}\"
+            POSTGRES_PORT=\"${{ secrets.POSTGRES_PORT }}\"
+            MAPBOX_ACCESS_TOKEN=\"${{ secrets.MAPBOX_ACCESS_TOKEN }}\"
+            TRIPADVISOR_API_KEY=\"${{ secrets.TRIPADVISOR_API_KEY }}\"
             EOL
 
             # Build & launch in production profile
             docker-compose up -d --build --remove-orphans --profile production
-          EOF 
+          " 
