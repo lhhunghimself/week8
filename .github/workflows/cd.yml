@@ -69,6 +69,11 @@ jobs:
         echo "EC2_USER: $EC2_USER"
         echo "scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env"
         # Copy the .env file to the remote server
+
+        #test by touching a test file and transferring it
+        touch test.txt
+        scp -i ~/.ssh/ec2.pem test.txt ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/test.txt
+        echo "test.txt transferred successfully!"
         scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env
         echo ".env file transferred successfully!"
       
