@@ -50,24 +50,20 @@ jobs:
         echo "FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}" >> /tmp/temp.env 
         echo "SECRET_KEY="${{ secrets.SECRET_KEY }}" >> /tmp/temp.env 
         echo "GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}" >> /tmp/temp.env 
-        echo "GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}" >> /tmp/temp.env 
-        echo "OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}" >> /tmp/temp.env 
-        echo "POSTGRES_USER="${{ secrets.POSTGRES_USER }}" >> /tmp/temp.env 
-        echo "POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" >> /tmp/temp.env 
-        echo "POSTGRES_DB="${{ secrets.POSTGRES_DB }}" >> /tmp/temp.env 
-        echo "POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}" >> /tmp/temp.env 
-        echo "MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}" >> /tmp/temp.env 
-        echo "TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}" >> /tmp/temp.env 
+        echo "GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}" >> temp.env 
+        echo "OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}" >> temp.env 
+        echo "POSTGRES_USER="${{ secrets.POSTGRES_USER }}" >> temp.env 
+        echo "POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" >> temp.env 
+        echo "POSTGRES_DB="${{ secrets.POSTGRES_DB }}" >> temp.env 
+        echo "POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}" >> temp.env 
+        echo "MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}" >> temp.env 
+        echo "TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}" >> temp.env 
         echo "Local .env file created successfully!"
         
     - name: Transfer .env file to EC2
       run: |
         EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
         REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
-        echo "EC2_HOST: $EC2_HOST"
-        echo "REPO_DIR: $REPO_DIR"
-        echo "EC2_USER: $EC2_USER"
-        echo "scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env"
         # Copy the .env file to the remote server
 
         #test by touching a test file and transferring it
