@@ -26,13 +26,22 @@ jobs:
     
     - name: Create .env file for from secrets
       run: |
-        cat > .env << EOF
-        POSTGRES_USER=${POSTGRES_USER}
-        POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-        POSTGRES_DB=${POSTGRES_DB}
-        POSTGRES_HOST=${POSTGRES_HOST}
-        FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+        echo "Creating local .env file..."
+        cat > temp.env << EOF
+        FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
+        FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
+        SECRET_KEY="${{ secrets.SECRET_KEY }}"
+        GITHUB_OAUTH_CLIENT_ID="${{ secrets.GH_OAUTH_CLIENT_ID }}"
+        GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GH_OAUTH_CLIENT_SECRET }}"
+        OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
+        POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+        POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+        POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+        POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+        MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+        TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
         EOF
+        echo "Local .env file created successfully!"
     
     - name: Start services with docker-compose
       run: |
