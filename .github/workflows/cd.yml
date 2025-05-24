@@ -46,20 +46,18 @@ jobs:
     - name: Create local .env file
       run: |
         echo "Creating local .env file..."
-        cat > temp.env << EOF
-        FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
-        FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
-        SECRET_KEY="${{ secrets.SECRET_KEY }}"
-        GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
-        GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
-        OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
-        POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
-        POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
-        POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
-        POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
-        MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
-        TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
-        EOF
+        echo "FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}" > temp.env 
+        echo "FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}" >> temp.env 
+        echo "SECRET_KEY="${{ secrets.SECRET_KEY }}" >> temp.env 
+        echo "GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}" >> temp.env 
+        echo "GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}" >> temp.env 
+        echo "OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}" >> temp.env 
+        echo "POSTGRES_USER="${{ secrets.POSTGRES_USER }}" >> temp.env 
+        echo "POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" >> temp.env 
+        echo "POSTGRES_DB="${{ secrets.POSTGRES_DB }}" >> temp.env 
+        echo "POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}" >> temp.env 
+        echo "MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}" >> temp.env 
+        echo "TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}" >> temp.env 
         echo "Local .env file created successfully!"
         
     - name: Transfer .env file to EC2
