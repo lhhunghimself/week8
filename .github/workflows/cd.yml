@@ -64,7 +64,10 @@ jobs:
       run: |
         EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
         REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
-        
+        echo "EC2_HOST: $EC2_HOST"
+        echo "REPO_DIR: $REPO_DIR"
+        echo "EC2_USER: $EC2_USER"
+        echo "scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env"
         # Copy the .env file to the remote server
         scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env
         echo ".env file transferred successfully!"
