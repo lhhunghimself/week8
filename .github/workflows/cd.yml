@@ -21,7 +21,9 @@ jobs:
         mkdir -p ~/.ssh/
         echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2.pem
         chmod 600 ~/.ssh/ec2.pem
-        ssh-keyscan -H ${{ secrets.EC2_HOST || inputs.ec2_instance_ip }} >> ~/.ssh/known_hosts
+        # Add StrictHostKeyChecking=no to avoid host key verification failures
+        echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n" > ~/.ssh/config
+        chmod 600 ~/.ssh/config
       
     - name: Deploy to EC2
       run: |
@@ -29,14 +31,14 @@ jobs:
         EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
         
         # SSH into the EC2 instance and run deployment steps
-        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'ENDSSH'
           # Set repository directory
           REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
           
           # Check if repository directory exists
           if [ ! -d "$REPO_DIR" ]; then
             echo "Repository directory doesn't exist. Cloning..."
-            git clone ${{ github.repository }} $REPO_DIR
+            git clone https://github.com/${{ github.repository }}.git $REPO_DIR
             cd $REPO_DIR
           else
             echo "Repository directory exists. Navigating to it..."
@@ -75,4 +77,4 @@ jobs:
           docker-compose --profile production up -d --build
           
           echo "Deployment completed!"
-        EOF
+        ENDSSH

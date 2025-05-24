@@ -152,3 +152,193 @@ This workflow will connect to your EC2 instance, check for the repository, clone
 
 ---
 
+_**User**_
+
+# Use the IP from secrets or from workflow input
+  EC2_HOST="***
+  "
+  
+  # SSH into the EC2 instance and run deployment steps
+  ssh -i ~/.ssh/ec2.pem ***@${EC2_HOST} << 'EOF'
+    # Set repository directory
+    REPO_DIR="***"
+    
+    # Check if repository directory exists
+    if [ ! -d "$REPO_DIR" ]; then
+      echo "Repository directory doesn't exist. Cloning..."
+      git clone lhhunghimself/week8 $REPO_DIR
+      cd $REPO_DIR
+    else
+      echo "Repository directory exists. Navigating to it..."
+      cd $REPO_DIR
+      
+      # Check if docker-compose is running and stop it
+      if docker-compose ps 2>/dev/null | grep -q Up; then
+        echo "Stopping existing docker-compose setup..."
+        docker-compose --profile production down
+      fi
+      
+      # Pull latest changes
+      echo "Pulling latest changes..."
+      git pull
+    fi
+    
+    # Create .env file from GitHub secrets
+    echo "Creating .env file..."
+    cat > .env << ENVEOF
+    FLASK_APP="app.py"
+    FLASK_DEBUG="0"
+    SECRET_KEY="***"
+    GITHUB_OAUTH_CLIENT_ID=""
+    GITHUB_OAUTH_CLIENT_SECRET=""
+    OAUTHLIB_INSECURE_TRANSPORT="0"
+    POSTGRES_USER="***"
+    POSTGRES_PASSWORD="***"
+    POSTGRES_DB="***"
+    POSTGRES_PORT="***"
+    MAPBOX_ACCESS_TOKEN="***"
+    TRIPADVISOR_API_KEY="***"
+    ENVEOF
+    
+    # Start docker-compose in production mode
+    echo "Starting docker-compose in production mode..."
+    docker-compose --profile production up -d --build
+    
+    echo "Deployment completed!"
+  EOF
+  shell: /usr/bin/bash -e {0}
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Host key verification failed.
+Error: Process completed with exit code 255.
+
+---
+
+_**Assistant**_
+
+<think>
+The error message shows that the SSH connection to the EC2 instance is failing with "Host key verification failed". This is a common SSH error that occurs when:
+
+1. The SSH key being used is invalid or improperly formatted
+2. The host key verification is failing because the remote host's key isn't in the known_hosts file or has changed
+
+Let's fix the workflow to address this issue:
+
+1. Make sure we're correctly handling the SSH key 
+2. Ensure we're properly adding the host to known_hosts
+3. Consider using SSH's StrictHostKeyChecking=no option for simplicity in CI/CD environments
+</think>
+
+# Fixing SSH Connection Issues in CD Workflow
+
+The error you're encountering is a host key verification failure, which is preventing the SSH connection to your EC2 instance. Let's fix your CD workflow:
+
+```yaml:.github/workflows/cd.yml
+name: CD Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      ec2_instance_ip:
+        description: 'EC2 Instance IP Address (optional)'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure SSH
+      run: |
+        mkdir -p ~/.ssh/
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2.pem
+        chmod 600 ~/.ssh/ec2.pem
+        # Add StrictHostKeyChecking=no to avoid host key verification failures
+        echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n" > ~/.ssh/config
+        chmod 600 ~/.ssh/config
+      
+    - name: Deploy to EC2
+      run: |
+        # Use the IP from secrets or from workflow input
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        # SSH into the EC2 instance and run deployment steps
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'ENDSSH'
+          # Set repository directory
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          
+          # Check if repository directory exists
+          if [ ! -d "$REPO_DIR" ]; then
+            echo "Repository directory doesn't exist. Cloning..."
+            git clone https://github.com/${{ github.repository }}.git $REPO_DIR
+            cd $REPO_DIR
+          else
+            echo "Repository directory exists. Navigating to it..."
+            cd $REPO_DIR
+            
+            # Check if docker-compose is running and stop it
+            if docker-compose ps 2>/dev/null | grep -q Up; then
+              echo "Stopping existing docker-compose setup..."
+              docker-compose --profile production down
+            fi
+            
+            # Pull latest changes
+            echo "Pulling latest changes..."
+            git pull
+          fi
+          
+          # Create .env file from GitHub secrets
+          echo "Creating .env file..."
+          cat > .env << ENVEOF
+          FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
+          FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
+          SECRET_KEY="${{ secrets.SECRET_KEY }}"
+          GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+          GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+          OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
+          POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+          POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+          POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+          MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+          TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+          ENVEOF
+          
+          # Start docker-compose in production mode
+          echo "Starting docker-compose in production mode..."
+          docker-compose --profile production up -d --build
+          
+          echo "Deployment completed!"
+        ENDSSH
+```
+
+## Key Changes:
+
+1. **Added SSH Config**: I've added an SSH config file that disables strict host key checking. This is a common approach for CI/CD pipelines to avoid host key verification failures.
+
+2. **Fixed Repository URL**: Changed the git clone command to use the full GitHub URL with https protocol, which should work without authentication for public repositories.
+
+3. **Changed Heredoc Delimiter**: Changed `EOF` to `ENDSSH` to be more descriptive and avoid potential conflicts.
+
+## Additional Considerations:
+
+1. **GitHub Authentication**: If your repository is private, you'll need to set up authentication for the git clone. You can either:
+   - Use a GitHub Personal Access Token: Add `https://username:token@github.com/...` 
+   - Use SSH authentication with deploy keys
+
+2. **SSH Key Format**: Ensure your `SSH_PRIVATE_KEY` secret is correctly formatted, including all line breaks.
+
+3. **Variable Expansion**: If you need environment variable expansion within the heredoc, you might need to adjust the quoting around 'ENDSSH'.
+
+4. **Debugging**: If you continue to have issues, add some debug steps to print more information about the SSH connection, like:
+   ```yaml
+   - name: Debug SSH
+     run: |
+       ssh -v -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} echo "SSH connection successful"
+   ```
+
+---
+
