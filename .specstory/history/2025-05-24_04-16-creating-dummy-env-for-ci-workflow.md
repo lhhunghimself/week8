@@ -100,3 +100,115 @@ You may need to adjust these variables based on your application's specific requ
 
 ---
 
+_**User**_
+
+wait for the db service to become available as well
+
+---
+
+_**Assistant**_
+
+# Adding Database Availability Check to CI Workflow
+
+I'll add a step to ensure the database service is properly initialized before proceeding with the tests.
+
+```yaml:.github/workflows/ci.yml
+name: CI Testing
+
+on:
+  workflow_dispatch:
+    # Allows manual triggering of the workflow
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Install Docker Compose
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y docker-compose
+        docker-compose --version
+    
+    - name: Create dummy .env file for testing
+      run: |
+        cat > .env << EOF
+        POSTGRES_USER=testuser
+        POSTGRES_PASSWORD=testpassword
+        POSTGRES_DB=testdb
+        POSTGRES_HOST=db
+        FLASK_SECRET_KEY=test_secret_key
+        EOF
+    
+    - name: Start services with docker-compose
+      run: |
+        docker-compose --profile debug up -d
+    
+    - name: Wait for database to be ready
+      run: |
+        echo "Waiting for PostgreSQL database to be ready..."
+        timeout=60
+        counter=0
+        while ! docker exec postgres_db pg_isready -U testuser > /dev/null 2>&1; do
+          if [ $counter -eq $timeout ]; then
+            echo "Timed out waiting for database"
+            docker-compose logs db
+            exit 1
+          fi
+          echo "Still waiting for database to be available... ($counter/$timeout)"
+          sleep 2
+          counter=$((counter + 2))
+        done
+        echo "PostgreSQL database is available!"
+    
+    - name: Wait for services to be ready
+      run: |
+        # Wait for Flask app to become available
+        echo "Waiting for Flask app to start..."
+        timeout=60
+        counter=0
+        while ! curl -s http://localhost:80 > /dev/null; do
+          if [ $counter -eq $timeout ]; then
+            echo "Timed out waiting for Flask app"
+            docker-compose logs
+            exit 1
+          fi
+          echo "Still waiting for Flask app to be available... ($counter/$timeout)"
+          sleep 2
+          counter=$((counter + 2))
+        done
+        echo "Flask app is available!"
+    
+    - name: Test connection to Flask
+      run: |
+        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80)
+        if [ "$response" -ne 200 ]; then
+          echo "Failed to connect to Flask app, got HTTP status $response"
+          docker-compose logs
+          exit 1
+        fi
+        echo "Successfully connected to Flask app!"
+    
+    - name: Clean up
+      run: |
+        docker-compose --profile debug down
+      if: always() 
+```
+
+I've added a new step called "Wait for database to be ready" between starting the services and checking the Flask app. This step:
+
+1. Uses `pg_isready` command inside the Postgres container to verify the database is accepting connections
+2. Polls the database with a timeout similar to your Flask app check
+3. Logs database-specific information if it times out
+4. Uses the same credentials specified in the .env file (testuser)
+
+This ensures your CI workflow waits for both critical services (database and web app) to be operational before running tests, which should help prevent flaky test runs.
+
+---
+
