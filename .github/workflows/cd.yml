@@ -68,7 +68,7 @@ jobs:
 
         #test by touching a test file and transferring it
         touch /tmp/test.txt
-        scp -i ~/.ssh/ec2.pem /tmp/test.txt ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/test.txt
+        scp -i ~/.ssh/ec2.pem /tmp/test.txt ubuntu@${EC2_HOST}:test.txt
         echo "test.txt transferred successfully!"
         scp -i ~/.ssh/ec2.pem /tmp/temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env
         echo ".env file transferred successfully!"
