@@ -276,3 +276,41 @@ If this still doesn't work, there's an alternative approach we could try using s
 
 ---
 
+_**User**_
+
+EOL is not being recognize as the end of the .env file
+
+---
+
+_**Assistant**_
+
+
+
+I see the issue. The problem is with the heredoc format inside the SSH command. Let's fix the `.github/workflows/cd.yml` file to properly handle the .env file creation:
+
+```yaml:.github/workflows/cd.yml
+name: CD
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Install your private key into ~/.ssh/id_rsa
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      # 2. SSH into EC2 and run the deployment script
+      - name: Deploy to EC2
+        env:
+          EC2_USER: ${{ secrets.EC2_
+
+---
+

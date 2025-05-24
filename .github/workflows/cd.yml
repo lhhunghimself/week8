@@ -23,11 +23,30 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           REPO_DIR: ${{ secrets.REPO_DIR }}
         run: |
-          # Pass environment variables directly to SSH command
+          # Create a temporary .env file locally
+          cat > temp_env_file << EOF
+          FLASK_APP="app.py"
+          FLASK_DEBUG="0"
+          SECRET_KEY="${{ secrets.SECRET_KEY }}"
+          GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+          GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+          OAUTHLIB_INSECURE_TRANSPORT="1"
+          POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+          POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+          POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}"
+          MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+          TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+          EOF
+          
+          # Copy the .env file to the server
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa temp_env_file $EC2_USER@$EC2_HOST:/tmp/env_file
+          
+          # Run the deployment commands
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST "
             set -e
             
-            # Use the directly passed variables
+            # Use directly passed variables
             REPO_DIR='$REPO_DIR'
             echo \"REPO_DIR: \$REPO_DIR\"
             
@@ -46,22 +65,13 @@ jobs:
             git fetch --all
             git reset --hard origin/main
 
-            # Recreate .env from GitHub secrets
-            cat > .env << 'EOL'
-            FLASK_APP=\"app.py\"
-            FLASK_DEBUG=\"0\"
-            SECRET_KEY=\"${{ secrets.SECRET_KEY }}\"
-            GITHUB_OAUTH_CLIENT_ID=\"${{ secrets.GITHUB_OAUTH_CLIENT_ID }}\"
-            GITHUB_OAUTH_CLIENT_SECRET=\"${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}\"
-            OAUTHLIB_INSECURE_TRANSPORT=\"1\"
-            POSTGRES_USER=\"${{ secrets.POSTGRES_USER }}\"
-            POSTGRES_PASSWORD=\"${{ secrets.POSTGRES_PASSWORD }}\"
-            POSTGRES_DB=\"${{ secrets.POSTGRES_DB }}\"
-            POSTGRES_PORT=\"${{ secrets.POSTGRES_PORT }}\"
-            MAPBOX_ACCESS_TOKEN=\"${{ secrets.MAPBOX_ACCESS_TOKEN }}\"
-            TRIPADVISOR_API_KEY=\"${{ secrets.TRIPADVISOR_API_KEY }}\"
-            EOL
+            # Copy the env file from /tmp
+            cp /tmp/env_file .env
+            rm /tmp/env_file
 
             # Build & launch in production profile
             docker-compose up -d --build --remove-orphans --profile production
-          " 
+          "
+          
+          # Clean up local temp file
+          rm temp_env_file 
