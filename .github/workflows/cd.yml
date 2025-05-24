@@ -25,7 +25,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST << 'EOF'
             set -e
-
+            echo "REPO_DIR: $REPO_DIR"
             # Clone if missing, otherwise update
             if [ ! -d "$REPO_DIR" ]; then
               git clone https://github.com/${{ github.repository }}.git "$REPO_DIR"
