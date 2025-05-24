@@ -72,13 +72,14 @@ jobs:
     
     - name: Test connection to Flask
       run: |
-        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80)
+        # Hit the login page (public) instead of protected '/' which always 302s
+        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80/login)
         if [ "$response" -ne 200 ]; then
-          echo "Failed to connect to Flask app, got HTTP status $response"
+          echo "Failed to connect to Flask login page, got HTTP status $response"
           docker-compose logs
           exit 1
         fi
-        echo "Successfully connected to Flask app!"
+        echo "Successfully connected to Flask login page!"
     
     - name: Clean up
       run: |
