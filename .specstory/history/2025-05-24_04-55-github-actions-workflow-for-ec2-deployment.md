@@ -588,7 +588,146 @@ the env file does not seem to be written properly
 
 _**Assistant**_
 
+It appears the primary challenge is reliably creating the `.env` file on your EC2 instance with the correct secret values. The previous methods had complexities with heredocs, SCP, and environment variable scoping within SSH sessions.
 
+This revised approach uses `ssh` to execute a script directly on the EC2 instance. The secrets and configuration (like `REPO_DIR`) are passed as arguments to this remote script. This method is generally more robust for handling multi-line content and variable expansion.
+
+Here's the updated `.github/workflows/cd.yml`:
+
+The main changes are:
+1.  All necessary secrets for the `.env` file are explicitly passed from the GitHub Actions `env` context as arguments to the `bash -s` command.
+2.  The script executed on the EC2 instance is enclosed in a single-quoted heredoc (`<< 'EOF'`). This ensures that variable expansion (like `$1`, `$2`, `${REPO_DIR_ON_EC2}`) happens *on the remote server*, not on the GitHub Actions runner.
+3.  Inside the remote script, these arguments are assigned to named variables for clarity.
+4.  The `.env` file is created on the remote server using a `cat << ENV_EOL ... ENV_EOL` heredoc, where variables like `${SECRET_KEY_VAL}` are expanded by the remote shell.
+5.  Added more robust checks for `docker-compose down` and `git` operations.
+6.  Ensured `REPO_DIR_ON_EC2` parent directories are created if they don't exist.
+
+```language=yaml:.github/workflows/cd.yml
+// existing code...
+      # 2. SSH into EC2 and run the deployment script
+      - name: Deploy to EC2
+        env:
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          REPO_DIR_CONFIG: ${{ secrets.REPO_DIR }} # Value for REPO_DIR on EC2
+          # Pass all secrets needed for the .env file, prefixing to avoid clashes
+          ENV_SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ENV_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.GITHUB_OAUTH_CLIENT_ID }}
+          ENV_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}
+          ENV_OAUTHLIB_INSECURE_TRANSPORT: "1" # Typically fixed, but can be a secret
+          ENV_POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          ENV_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ENV_POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          ENV_POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+          ENV_MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          ENV_TRIPADVISOR_API_KEY: ${{ secrets.TRIPADVISOR_API_KEY }}
+        run: |
+          # These arguments are expanded by GitHub Actions runner's shell BEFORE ssh is called.
+          # Then they are passed to the remote bash script.
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST bash -s -- \
+            "${REPO_DIR_CONFIG}" \
+            "${ENV_SECRET_KEY}" \
+            "${ENV_GITHUB_OAUTH_CLIENT_ID}" \
+            "${ENV_GITHUB_OAUTH_CLIENT_SECRET}" \
+            "${ENV_OAUTHLIB_INSECURE_TRANSPORT}" \
+            "${ENV_POSTGRES_USER}" \
+            "${ENV_POSTGRES_PASSWORD}" \
+            "${ENV_POSTGRES_DB}" \
+            "${ENV_POSTGRES_PORT}" \
+            "${ENV_MAPBOX_ACCESS_TOKEN}" \
+            "${ENV_TRIPADVISOR_API_KEY}" << 'EOF'
+            # This entire script runs on the EC2 instance.
+            # Arguments passed to 'bash -s --' are available as $1, $2, etc.
+            # The single quotes around 'EOF' above prevent local (runner) shell expansion inside this block.
+            set -e # Exit immediately if a command exits with a non-zero status.
+
+            # Assign arguments to meaningful variable names
+            REPO_DIR_ON_EC2="$1"
+            SECRET_KEY_VAL="$2"
+            GITHUB_ID_VAL="$3"
+            GITHUB_SECRET_VAL="$4"
+            OAUTHLIB_INSECURE_VAL="$5"
+            PG_USER_VAL="$6"
+            PG_PASS_VAL="$7"
+            PG_DB_VAL="$8"
+            PG_PORT_VAL="$9"
+            MAPBOX_TOKEN_VAL="${10}"
+            TRIPADVISOR_KEY_VAL="${11}"
+
+            echo "--- Starting Deployment on EC2 ---"
+            echo "Target REPO_DIR on EC2: ${REPO_DIR_ON_EC2}"
+
+            if [ -z "${REPO_DIR_ON_EC2}" ]; then
+              echo "Error: Repository directory (REPO_DIR_ON_EC2) is not set. Exiting."
+              exit 1
+            fi
+
+            # Ensure parent directory for the repository exists
+            REPO_PARENT_DIR=$(dirname "${REPO_DIR_ON_EC2}")
+            if [ ! -d "${REPO_PARENT_DIR}" ]; then
+                echo "Creating parent directory: ${REPO_PARENT_DIR}"
+                mkdir -p "${REPO_PARENT_DIR}"
+            fi
+
+            # Clone repository if it doesn't exist, else navigate into it
+            if [ ! -d "${REPO_DIR_ON_EC2}" ]; then
+              echo "Cloning repository into ${REPO_DIR_ON_EC2}..."
+              git clone https://github.com/${{ github.repository }}.git "${REPO_DIR_ON_EC2}"
+              cd "${REPO_DIR_ON_EC2}"
+            else
+              echo "Repository directory ${REPO_DIR_ON_EC2} already exists. Changing into it."
+              cd "${REPO_DIR_ON_EC2}"
+            fi
+            echo "Current directory: $(pwd)"
+
+            echo "Stopping existing Docker services (if any)..."
+            if [ -f docker-compose.yml ]; then
+                # Check if any services defined in docker-compose.yml are running
+                if docker-compose ps -q | grep -q .; then
+                    echo "Found running services. Bringing them down..."
+                    docker-compose down --remove-orphans
+                else
+                    echo "docker-compose.yml exists, but no services are currently running."
+                fi
+            else
+              echo "docker-compose.yml not found in $(pwd). Skipping docker-compose down."
+            fi
+
+            echo "Fetching latest changes from git..."
+            git fetch --all
+            # github.ref_name provides the branch or tag name for the workflow run
+            TARGET_BRANCH="${{ github.ref_name }}" 
+            echo "Resetting repository to origin/${TARGET_BRANCH}..."
+            git reset --hard "origin/${TARGET_BRANCH}"
+            # git pull origin "${TARGET_BRANCH}" # Optional: git reset --hard should be sufficient
+
+            echo "Creating .env file..."
+            # The ENV_EOL delimiter here is NOT quoted, so remote shell variables are expanded.
+            cat > .env << ENV_EOL
+FLASK_APP="app.py"
+FLASK_DEBUG="0"
+SECRET_KEY="${SECRET_KEY_VAL}"
+GITHUB_OAUTH_CLIENT_ID="${GITHUB_ID_VAL}"
+GITHUB_OAUTH_CLIENT_SECRET="${GITHUB_SECRET_VAL}"
+OAUTHLIB_INSECURE_TRANSPORT="${OAUTHLIB_INSECURE_VAL}"
+POSTGRES_USER="${PG_USER_VAL}"
+POSTGRES_PASSWORD="${PG_PASS_VAL}"
+POSTGRES_DB="${PG_DB_VAL}"
+POSTGRES_PORT="${PG_PORT_VAL}"
+MAPBOX_ACCESS_TOKEN="${MAPBOX_TOKEN_VAL}"
+TRIPADVISOR_API_KEY="${TRIPADVISOR_KEY_VAL}"
+ENV_EOL
+            
+            echo ".env file created. Verifying first few lines (actual values redacted in log):"
+            head -n 3 .env | sed 's/=.*$/=**REDACTED**/'
+
+            echo "Building and starting Docker services with 'production' profile..."
+            docker-compose --profile production up -d --build --remove-orphans
+            
+            echo "--- Deployment script finished successfully on EC2 ---"
+          EOF
+// existing code...
+```
 
 ---
 

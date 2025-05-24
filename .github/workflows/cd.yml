@@ -1,140 +1,78 @@
-name: CD
+name: CD Deployment
 
 on:
   workflow_dispatch:
+    inputs:
+      ec2_instance_ip:
+        description: 'EC2 Instance IP Address (optional)'
+        required: false
+        type: string
 
 jobs:
   deploy:
-    name: Deploy to EC2
     runs-on: ubuntu-latest
-
+    
     steps:
-      # 1. Install your private key into ~/.ssh/id_rsa
-      - name: Install SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-      # 2. SSH into EC2 and run the deployment script
-      - name: Deploy to EC2
-        env:
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          REPO_DIR_CONFIG: ${{ secrets.REPO_DIR }} # Value for REPO_DIR on EC2
-          # Pass all secrets needed for the .env file, prefixing to avoid clashes
-          ENV_SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          ENV_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.GITHUB_OAUTH_CLIENT_ID }}
-          ENV_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}
-          ENV_OAUTHLIB_INSECURE_TRANSPORT: "1" # Typically fixed, but can be a secret
-          ENV_POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          ENV_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          ENV_POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          ENV_POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
-          ENV_MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
-          ENV_TRIPADVISOR_API_KEY: ${{ secrets.TRIPADVISOR_API_KEY }}
-        run: |
-          # These arguments are expanded by GitHub Actions runner's shell BEFORE ssh is called.
-          # Then they are passed to the remote bash script.
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST bash -s -- \
-            "${REPO_DIR_CONFIG}" \
-            "${ENV_SECRET_KEY}" \
-            "${ENV_GITHUB_OAUTH_CLIENT_ID}" \
-            "${ENV_GITHUB_OAUTH_CLIENT_SECRET}" \
-            "${ENV_OAUTHLIB_INSECURE_TRANSPORT}" \
-            "${ENV_POSTGRES_USER}" \
-            "${ENV_POSTGRES_PASSWORD}" \
-            "${ENV_POSTGRES_DB}" \
-            "${ENV_POSTGRES_PORT}" \
-            "${ENV_MAPBOX_ACCESS_TOKEN}" \
-            "${ENV_TRIPADVISOR_API_KEY}" << 'EOF'
-            # This entire script runs on the EC2 instance.
-            # Arguments passed to 'bash -s --' are available as $1, $2, etc.
-            # The single quotes around 'EOF' above prevent local (runner) shell expansion inside this block.
-            set -e # Exit immediately if a command exits with a non-zero status.
-
-            # Assign arguments to meaningful variable names
-            REPO_DIR_ON_EC2="$1"
-            SECRET_KEY_VAL="$2"
-            GITHUB_ID_VAL="$3"
-            GITHUB_SECRET_VAL="$4"
-            OAUTHLIB_INSECURE_VAL="$5"
-            PG_USER_VAL="$6"
-            PG_PASS_VAL="$7"
-            PG_DB_VAL="$8"
-            PG_PORT_VAL="$9"
-            MAPBOX_TOKEN_VAL="${10}"
-            TRIPADVISOR_KEY_VAL="${11}"
-
-            echo "--- Starting Deployment on EC2 ---"
-            echo "Target REPO_DIR on EC2: ${REPO_DIR_ON_EC2}"
-
-            if [ -z "${REPO_DIR_ON_EC2}" ]; then
-              echo "Error: Repository directory (REPO_DIR_ON_EC2) is not set. Exiting."
-              exit 1
-            fi
-
-            # Ensure parent directory for the repository exists
-            REPO_PARENT_DIR=$(dirname "${REPO_DIR_ON_EC2}")
-            if [ ! -d "${REPO_PARENT_DIR}" ]; then
-                echo "Creating parent directory: ${REPO_PARENT_DIR}"
-                mkdir -p "${REPO_PARENT_DIR}"
-            fi
-
-            # Clone repository if it doesn't exist, else navigate into it
-            if [ ! -d "${REPO_DIR_ON_EC2}" ]; then
-              echo "Cloning repository into ${REPO_DIR_ON_EC2}..."
-              git clone https://github.com/${{ github.repository }}.git "${REPO_DIR_ON_EC2}"
-              cd "${REPO_DIR_ON_EC2}"
-            else
-              echo "Repository directory ${REPO_DIR_ON_EC2} already exists. Changing into it."
-              cd "${REPO_DIR_ON_EC2}"
-            fi
-            echo "Current directory: $(pwd)"
-
-            echo "Stopping existing Docker services (if any)..."
-            if [ -f docker-compose.yml ]; then
-                # Check if any services defined in docker-compose.yml are running
-                if docker-compose ps -q | grep -q .; then
-                    echo "Found running services. Bringing them down..."
-                    docker-compose down --remove-orphans
-                else
-                    echo "docker-compose.yml exists, but no services are currently running."
-                fi
-            else
-              echo "docker-compose.yml not found in $(pwd). Skipping docker-compose down."
-            fi
-
-            echo "Fetching latest changes from git..."
-            git fetch --all
-            # github.ref_name provides the branch or tag name for the workflow run
-            TARGET_BRANCH="${{ github.ref_name }}" 
-            echo "Resetting repository to origin/${TARGET_BRANCH}..."
-            git reset --hard "origin/${TARGET_BRANCH}"
-            # git pull origin "${TARGET_BRANCH}" # Optional: git reset --hard should be sufficient
-
-            echo "Creating .env file..."
-            # The ENV_EOL delimiter here is NOT quoted, so remote shell variables are expanded.
-            cat > .env << ENV_EOL
-FLASK_APP="app.py"
-FLASK_DEBUG="0"
-SECRET_KEY="${SECRET_KEY_VAL}"
-GITHUB_OAUTH_CLIENT_ID="${GITHUB_ID_VAL}"
-GITHUB_OAUTH_CLIENT_SECRET="${GITHUB_SECRET_VAL}"
-OAUTHLIB_INSECURE_TRANSPORT="${OAUTHLIB_INSECURE_VAL}"
-POSTGRES_USER="${PG_USER_VAL}"
-POSTGRES_PASSWORD="${PG_PASS_VAL}"
-POSTGRES_DB="${PG_DB_VAL}"
-POSTGRES_PORT="${PG_PORT_VAL}"
-MAPBOX_ACCESS_TOKEN="${MAPBOX_TOKEN_VAL}"
-TRIPADVISOR_API_KEY="${TRIPADVISOR_KEY_VAL}"
-ENV_EOL
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure SSH
+      run: |
+        mkdir -p ~/.ssh/
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2.pem
+        chmod 600 ~/.ssh/ec2.pem
+        ssh-keyscan -H ${{ secrets.EC2_HOST || inputs.ec2_instance_ip }} >> ~/.ssh/known_hosts
+      
+    - name: Deploy to EC2
+      run: |
+        # Use the IP from secrets or from workflow input
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        # SSH into the EC2 instance and run deployment steps
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+          # Set repository directory
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          
+          # Check if repository directory exists
+          if [ ! -d "$REPO_DIR" ]; then
+            echo "Repository directory doesn't exist. Cloning..."
+            git clone ${{ github.repository }} $REPO_DIR
+            cd $REPO_DIR
+          else
+            echo "Repository directory exists. Navigating to it..."
+            cd $REPO_DIR
             
-            echo ".env file created. Verifying first few lines (actual values redacted in log):"
-            head -n 3 .env | sed 's/=.*$/=**REDACTED**/'
-
-            echo "Building and starting Docker services with 'production' profile..."
-            docker-compose --profile production up -d --build --remove-orphans
+            # Check if docker-compose is running and stop it
+            if docker-compose ps 2>/dev/null | grep -q Up; then
+              echo "Stopping existing docker-compose setup..."
+              docker-compose --profile production down
+            fi
             
-            echo "--- Deployment script finished successfully on EC2 ---"
-          EOF
+            # Pull latest changes
+            echo "Pulling latest changes..."
+            git pull
+          fi
+          
+          # Create .env file from GitHub secrets
+          echo "Creating .env file..."
+          cat > .env << ENVEOF
+          FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
+          FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
+          SECRET_KEY="${{ secrets.SECRET_KEY }}"
+          GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+          GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+          OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
+          POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+          POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+          POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+          MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+          TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+          ENVEOF
+          
+          # Start docker-compose in production mode
+          echo "Starting docker-compose in production mode..."
+          docker-compose --profile production up -d --build
+          
+          echo "Deployment completed!"
+        EOF 
