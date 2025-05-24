@@ -310,7 +310,285 @@ jobs:
       # 2. SSH into EC2 and run the deployment script
       - name: Deploy to EC2
         env:
-          EC2_USER: ${{ secrets.EC2_
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          REPO_DIR: ${{ secrets.REPO_DIR }}
+        run: |
+          # Create a temporary .env file locally
+          cat > temp_env_file << EOF
+          FLASK_APP="app.py"
+          FLASK_DEBUG="0"
+          SECRET_KEY="${{ secrets.SECRET_KEY }}"
+          GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+          GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+          OAUTHLIB_INSECURE_TRANSPORT="1"
+          POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+          POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+          POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}"
+          MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+          TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+          EOF
+          
+          # Copy the .env file to the server
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa temp_env_file $EC2_USER@$EC2_HOST:/tmp/env_file
+          
+          # Run the deployment commands
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST "
+            set -e
+            
+            # Use directly passed variables
+            REPO_DIR='$REPO_DIR'
+            echo \"REPO_DIR: \$REPO_DIR\"
+            
+            # Clone if missing, otherwise update
+            if [ ! -d \"\$REPO_DIR\" ]; then
+              git clone https://github.com/${{ github.repository }}.git \"\$REPO_DIR\"
+            fi
+            cd \"\$REPO_DIR\"
+
+            # Stop any running services
+            if [ -f docker-compose.yml ]; then
+              docker-compose down
+            fi
+
+            # Pull latest and reset to main
+            git fetch --all
+            git reset --hard origin/main
+
+            # Copy the env file from /tmp
+            cp /tmp/env_file .env
+            rm /tmp/env_file
+
+            # Build & launch in production profile
+            docker-compose up -d --build --remove-orphans --profile production
+          "
+          
+          # Clean up local temp file
+          rm temp_env_file
+```
+
+## Key Changes:
+
+1. **Created the .env file locally** first as `temp_env_file`
+2. **Used SCP to copy** the .env file to the server at `/tmp/env_file`
+3. **Simplified the SSH commands** by removing the heredoc inside SSH
+4. **Added cleanup steps** to remove temporary files
+
+This approach:
+- Avoids the nested heredoc issue entirely
+- Allows GitHub secrets to expand properly in the local environment
+- Ensures the .env file has the correct format and content
+- Is more secure since we only temporarily store the .env file in /tmp
+
+Try this approach and it should resolve your issue with the EOL delimiter not being recognized.
+
+---
+
+_**User**_
+
+# Create a temporary .env file locally
+3
+  cat > temp_env_file << EOF
+4
+  FLASK_APP="app.py"
+5
+  FLASK_DEBUG="0"
+6
+  SECRET_KEY="***"
+7
+  GITHUB_OAUTH_CLIENT_ID=""
+8
+  GITHUB_OAUTH_CLIENT_SECRET=""
+9
+  OAUTHLIB_INSECURE_TRANSPORT="1"
+10
+  POSTGRES_USER="***"
+11
+  POSTGRES_PASSWORD="***"
+12
+  POSTGRES_DB="***"
+13
+  POSTGRES_PORT="***"
+14
+  MAPBOX_ACCESS_TOKEN="***"
+15
+  TRIPADVISOR_API_KEY="***"
+16
+  EOF
+17
+  
+18
+  # Copy the .env file to the server
+19
+  scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa temp_env_file $EC2_USER@$EC2_HOST:/tmp/env_file
+20
+  
+21
+  # Run the deployment commands
+22
+  ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST "
+23
+    set -e
+24
+    
+25
+    # Use directly passed variables
+26
+    REPO_DIR='$REPO_DIR'
+27
+    echo \"REPO_DIR: \$REPO_DIR\"
+28
+    
+29
+    # Clone if missing, otherwise update
+30
+    if [ ! -d \"\$REPO_DIR\" ]; then
+31
+      git clone https://github.com/lhhunghimself/week8.git \"\$REPO_DIR\"
+32
+    fi
+33
+    cd \"\$REPO_DIR\"
+34
+  
+35
+    # Stop any running services
+36
+    if [ -f docker-compose.yml ]; then
+37
+      docker-compose down
+38
+    fi
+39
+  
+40
+    # Pull latest and reset to main
+41
+    git fetch --all
+42
+    git reset --hard origin/main
+43
+  
+44
+    # Copy the env file from /tmp
+45
+    cp /tmp/env_file .env
+46
+    rm /tmp/env_file
+47
+  
+48
+    # Build & launch in production profile
+49
+    docker-compose up -d --build --remove-orphans --profile production
+50
+  "
+51
+  
+52
+  # Clean up local temp file
+53
+  rm temp_env_file 
+54
+  shell: /usr/bin/bash -e {0}
+55
+  env:
+56
+    EC2_USER: ***
+57
+    EC2_HOST: ***
+58
+  
+59
+    REPO_DIR: ***
+60
+:/tmp/env_file: No such file or directory
+61
+Error: Process completed with exit code 1.
+
+---
+
+_**Assistant**_
+
+Below is a more robust approach—no local temp files or SCP, just one SSH‐delivered script that:
+
+- Expands `REPO_DIR` (and pulls in your GitHub‐secrets) **locally**  
+- Runs **entire** deploy logic **remotely**  
+- Uses a nested, quoted heredoc for **.env** so secrets land verbatim in the file  
+
+```yaml:path=.github/workflows/cd.yml
+# … the top of the file stays the same …
+      - name: Deploy to EC2
+        env:
+          EC2_USER:        ${{ secrets.EC2_USER }}
+          EC2_HOST:        ${{ secrets.EC2_HOST }}
+          REPO_DIR:        ${{ secrets.REPO_DIR }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $EC2_USER@$EC2_HOST bash -s <<EOF
+            set -e
+
+            #— locally‐expanded REPO_DIR passed in from step-env
+            REPO_DIR="${REPO_DIR}"
+            echo "REPO_DIR: \$REPO_DIR"
+
+            # clone if missing, otherwise update
+            if [ ! -d "\$REPO_DIR" ]; then
+              git clone https://github.com/${{ github.repository }}.git "\$REPO_DIR"
+            fi
+            cd "\$REPO_DIR"
+
+            # tear down any existing stack
+            if [ -f docker-compose.yml ]; then
+              docker-compose down --remove-orphans
+            fi
+
+            # get latest
+            git fetch --all
+            git reset --hard origin/main
+
+            # write a fresh .env using your GitHub Secrets
+            cat > .env << 'EOL'
+FLASK_APP="app.py"
+FLASK_DEBUG="0"
+SECRET_KEY="${{ secrets.SECRET_KEY }}"
+GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+OAUTHLIB_INSECURE_TRANSPORT="1"
+POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}"
+MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+EOL
+
+            # build & launch production profile
+            docker-compose up -d --build --remove-orphans --profile production
+          EOF
+# … rest of file unchanged …
+```
+
+What this does:
+
+1. **`bash -s <<EOF`** streams a small deploy script into the EC2 shell.  
+2. **`REPO_DIR="${REPO_DIR}"`** injects your runner’s `REPO_DIR` straight into that script.  
+3. **`cat > .env << 'EOL'…EOL`** creates your `.env` remotely, with the actual secret values (inserted at workflow‐parse time).  
+4. Finally, `docker-compose up -d … --profile production` rebuilds and restarts your stack.  
+
+No more indent‐mistakes on nested heredocs or SCP pitfalls—everything runs in one shot over SSH.
+
+---
+
+_**User**_
+
+the env file does not seem to be written properly
+
+---
+
+_**Assistant**_
+
+
 
 ---
 
