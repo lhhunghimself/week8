@@ -46,31 +46,29 @@ jobs:
     - name: Create local .env file
       run: |
         echo "Creating local .env file..."
-        echo "FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}" > /tmp/temp.env 
-        echo "FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}" >> /tmp/temp.env 
-        echo "SECRET_KEY="${{ secrets.SECRET_KEY }}" >> /tmp/temp.env 
-        echo "GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}" >> /tmp/temp.env 
-        echo "GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}" >> temp.env 
-        echo "OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}" >> temp.env 
-        echo "POSTGRES_USER="${{ secrets.POSTGRES_USER }}" >> temp.env 
-        echo "POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" >> temp.env 
-        echo "POSTGRES_DB="${{ secrets.POSTGRES_DB }}" >> temp.env 
-        echo "POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}" >> temp.env 
-        echo "MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}" >> temp.env 
-        echo "TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}" >> temp.env 
+        cat > temp.env << EOF
+        FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
+        FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
+        SECRET_KEY="${{ secrets.SECRET_KEY }}"
+        GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+        GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+        OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
+        POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+        POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+        POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+        POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+        MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+        TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+        EOF
         echo "Local .env file created successfully!"
         
     - name: Transfer .env file to EC2
       run: |
         EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
         REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+        
         # Copy the .env file to the remote server
-
-        #test by touching a test file and transferring it
-        touch /tmp/test.txt
-        scp -i ~/.ssh/ec2.pem /tmp/test.txt ubuntu@ec2-18-224-110-231.us-east-2.compute.amazonaws.com:/home/ubuntu/test.txt
-        echo "test.txt transferred successfully!"
-        scp -i ~/.ssh/ec2.pem /tmp/temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env
+        scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env
         echo ".env file transferred successfully!"
       
     - name: Deploy with Docker Compose
