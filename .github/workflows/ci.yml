@@ -1,6 +1,9 @@
 name: CI Testing
 
 on:
+  push:
+    branches:
+      - '**'  # Run on all branches
   workflow_dispatch:
     # Allows manual triggering of the workflow
 
@@ -35,7 +38,6 @@ jobs:
       run: |
         docker-compose --profile debug up -d
     
-
     - name: Wait for services to be ready
       run: |
         # Wait for Flask app to become available

@@ -1,6 +1,13 @@
 name: CD Deployment
 
 on:
+  workflow_run:
+    workflows: ["CI Testing"]
+    types:
+      - completed
+    branches:
+      - main  # Only deploy from main branch
+      - master # Support both main and master branch names
   workflow_dispatch:
     inputs:
       ec2_instance_ip:
@@ -11,6 +18,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Only run if the CI workflow was successful
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     
     steps:
     - name: Checkout code
