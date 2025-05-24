@@ -21,60 +21,73 @@ jobs:
         mkdir -p ~/.ssh/
         echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2.pem
         chmod 600 ~/.ssh/ec2.pem
-        # Add StrictHostKeyChecking=no to avoid host key verification failures
         echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n" > ~/.ssh/config
         chmod 600 ~/.ssh/config
       
-    - name: Deploy to EC2
+    - name: Setup repository on EC2
       run: |
-        # Use the IP from secrets or from workflow input
         EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
         
-        # SSH into the EC2 instance and run deployment steps
-        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'ENDSSH'
-          # Set repository directory
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
           REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
           
-          # Check if repository directory exists
           if [ ! -d "$REPO_DIR" ]; then
             echo "Repository directory doesn't exist. Cloning..."
             git clone https://github.com/${{ github.repository }}.git $REPO_DIR
-            cd $REPO_DIR
           else
-            echo "Repository directory exists. Navigating to it..."
+            echo "Repository directory exists. Pulling latest changes..."
             cd $REPO_DIR
-            
-            # Check if docker-compose is running and stop it
-            if docker-compose ps 2>/dev/null | grep -q Up; then
-              echo "Stopping existing docker-compose setup..."
-              docker-compose --profile production down
-            fi
-            
-            # Pull latest changes
-            echo "Pulling latest changes..."
             git pull
           fi
           
-          # Create .env file from GitHub secrets
-          echo "Creating .env file..."
-          cat > .env << ENVEOF
-          FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
-          FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
-          SECRET_KEY="${{ secrets.SECRET_KEY }}"
-          GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
-          GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
-          OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
-          POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
-          POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
-          POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
-          POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
-          MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
-          TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
-          ENVEOF
+          echo "Repository setup completed!"
+        EOF
+      
+    - name: Create local .env file
+      run: |
+        echo "Creating local .env file..."
+        cat > temp.env << EOF
+        FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
+        FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
+        SECRET_KEY="${{ secrets.SECRET_KEY }}"
+        GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+        GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+        OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
+        POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+        POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+        POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+        POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+        MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+        TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+        EOF
+        echo "Local .env file created successfully!"
+        
+    - name: Transfer .env file to EC2
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+        
+        # Copy the .env file to the remote server
+        scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env
+        echo ".env file transferred successfully!"
+      
+    - name: Deploy with Docker Compose
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          cd $REPO_DIR
+          
+          # Check if docker-compose is running and stop it
+          if docker-compose ps 2>/dev/null | grep -q Up; then
+            echo "Stopping existing docker-compose setup..."
+            docker-compose --profile production down
+          fi
           
           # Start docker-compose in production mode
           echo "Starting docker-compose in production mode..."
           docker-compose --profile production up -d --build
           
           echo "Deployment completed!"
-        ENDSSH
+        EOF

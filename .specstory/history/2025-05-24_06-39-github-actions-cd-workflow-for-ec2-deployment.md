@@ -342,3 +342,283 @@ jobs:
 
 ---
 
+_**User**_
+
+Divide this into separate ssh commands. First get the git directory downloaded if necessary, Second create the .env file and copy. Third do the docker compose up. this is to simplify the different EOFs 
+
+---
+
+_**Assistant**_
+
+<think>
+I'll divide the SSH command into three separate steps:
+
+1. First step: Check and clone the repository if needed
+2. Second step: Create the .env file 
+3. Third step: Start Docker Compose
+
+This approach will simplify the process by avoiding nested heredocs and make the workflow easier to debug and maintain.
+</think>
+
+# Improved CD Workflow with Separate SSH Steps
+
+I'll divide the SSH commands into three separate steps for better organization and easier debugging:
+
+```yaml:.github/workflows/cd.yml
+name: CD Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      ec2_instance_ip:
+        description: 'EC2 Instance IP Address (optional)'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure SSH
+      run: |
+        mkdir -p ~/.ssh/
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2.pem
+        chmod 600 ~/.ssh/ec2.pem
+        echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n" > ~/.ssh/config
+        chmod 600 ~/.ssh/config
+      
+    - name: Setup repository on EC2
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          
+          if [ ! -d "$REPO_DIR" ]; then
+            echo "Repository directory doesn't exist. Cloning..."
+            git clone https://github.com/${{ github.repository }}.git $REPO_DIR
+          else
+            echo "Repository directory exists. Pulling latest changes..."
+            cd $REPO_DIR
+            git pull
+          fi
+          
+          echo "Repository setup completed!"
+        EOF
+      
+    - name: Create .env file on EC2
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          cd $REPO_DIR
+          
+          echo "Creating .env file..."
+          cat > .env << ENVEOF
+          FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
+          FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
+          SECRET_KEY="${{ secrets.SECRET_KEY }}"
+          GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+          GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+          OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
+          POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+          POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+          POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+          POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+          MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+          TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+          ENVEOF
+          
+          echo ".env file created successfully!"
+        EOF
+      
+    - name: Deploy with Docker Compose
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          cd $REPO_DIR
+          
+          # Check if docker-compose is running and stop it
+          if docker-compose ps 2>/dev/null | grep -q Up; then
+            echo "Stopping existing docker-compose setup..."
+            docker-compose --profile production down
+          fi
+          
+          # Start docker-compose in production mode
+          echo "Starting docker-compose in production mode..."
+          docker-compose --profile production up -d --build
+          
+          echo "Deployment completed!"
+        EOF
+```
+
+## Advantages of This Approach
+
+1. **Better Error Isolation**: If an error occurs, you can immediately identify which stage failed.
+2. **Simpler Debugging**: Each step can be debugged independently.
+3. **Avoids Nested Heredocs**: No need to worry about ENVEOF inside the main SSH heredoc.
+4. **Cleaner Workflow**: Easier to understand and maintain.
+
+## Setup Instructions
+
+The secrets required remain the same:
+
+1. `SSH_PRIVATE_KEY`: Your private SSH key for EC2 access
+2. `EC2_HOST`: The hostname or IP of your EC2 instance
+3. `EC2_USER`: SSH username (e.g., "ec2-user", "ubuntu")
+4. `REPO_DIR`: (Optional) Directory name for the repository
+5. Environment variables for your `.env` file
+
+Make sure to set up these secrets in your GitHub repository settings before running the workflow.
+
+---
+
+_**User**_
+
+Instead of creating the .env file through ssh, create a local temp_env file. Then create another instruction to scp it to the correct place. 
+
+---
+
+_**Assistant**_
+
+<think>
+Alright, I need to modify the GitHub Actions workflow to create the .env file locally and then use SCP to copy it to the EC2 instance instead of creating it directly via SSH. Here's how I'll restructure the workflow:
+
+1. Keep the SSH configuration step
+2. Keep the repository setup step (cloning/pulling via SSH)
+3. Replace the "Create .env file on EC2" step with:
+   - A step to create the .env file locally
+   - A step to SCP the file to the EC2 instance
+4. Keep the Docker Compose deployment step
+
+This approach has some advantages:
+- Creates the file locally, which might be more reliable than creating it through SSH heredocs
+- Separates file creation from file transfer, making debugging easier
+- Uses SCP which is designed specifically for file transfers
+</think>
+
+# Updated CD Workflow with Local .env Creation and SCP Transfer
+
+I'll modify the workflow to create the .env file locally and then securely copy it to the EC2 instance:
+
+```yaml:.github/workflows/cd.yml
+name: CD Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      ec2_instance_ip:
+        description: 'EC2 Instance IP Address (optional)'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure SSH
+      run: |
+        mkdir -p ~/.ssh/
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2.pem
+        chmod 600 ~/.ssh/ec2.pem
+        echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n" > ~/.ssh/config
+        chmod 600 ~/.ssh/config
+      
+    - name: Setup repository on EC2
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          
+          if [ ! -d "$REPO_DIR" ]; then
+            echo "Repository directory doesn't exist. Cloning..."
+            git clone https://github.com/${{ github.repository }}.git $REPO_DIR
+          else
+            echo "Repository directory exists. Pulling latest changes..."
+            cd $REPO_DIR
+            git pull
+          fi
+          
+          echo "Repository setup completed!"
+        EOF
+      
+    - name: Create local .env file
+      run: |
+        echo "Creating local .env file..."
+        cat > temp.env << EOF
+        FLASK_APP="${{ secrets.FLASK_APP || 'app.py' }}"
+        FLASK_DEBUG="${{ secrets.FLASK_DEBUG || '0' }}"
+        SECRET_KEY="${{ secrets.SECRET_KEY }}"
+        GITHUB_OAUTH_CLIENT_ID="${{ secrets.GITHUB_OAUTH_CLIENT_ID }}"
+        GITHUB_OAUTH_CLIENT_SECRET="${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}"
+        OAUTHLIB_INSECURE_TRANSPORT="${{ secrets.OAUTHLIB_INSECURE_TRANSPORT || '0' }}"
+        POSTGRES_USER="${{ secrets.POSTGRES_USER }}"
+        POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+        POSTGRES_DB="${{ secrets.POSTGRES_DB }}"
+        POSTGRES_PORT="${{ secrets.POSTGRES_PORT || '5432' }}"
+        MAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+        TRIPADVISOR_API_KEY="${{ secrets.TRIPADVISOR_API_KEY }}"
+        EOF
+        echo "Local .env file created successfully!"
+        
+    - name: Transfer .env file to EC2
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+        
+        # Copy the .env file to the remote server
+        scp -i ~/.ssh/ec2.pem temp.env ${{ secrets.EC2_USER }}@${EC2_HOST}:${REPO_DIR}/.env
+        echo ".env file transferred successfully!"
+      
+    - name: Deploy with Docker Compose
+      run: |
+        EC2_HOST="${{ secrets.EC2_HOST || inputs.ec2_instance_ip }}"
+        
+        ssh -i ~/.ssh/ec2.pem ${{ secrets.EC2_USER }}@${EC2_HOST} << 'EOF'
+          REPO_DIR="${{ secrets.REPO_DIR || 'app' }}"
+          cd $REPO_DIR
+          
+          # Check if docker-compose is running and stop it
+          if docker-compose ps 2>/dev/null | grep -q Up; then
+            echo "Stopping existing docker-compose setup..."
+            docker-compose --profile production down
+          fi
+          
+          # Start docker-compose in production mode
+          echo "Starting docker-compose in production mode..."
+          docker-compose --profile production up -d --build
+          
+          echo "Deployment completed!"
+        EOF
+```
+
+## Key Changes:
+
+1. **Split .env File Creation**: Now the workflow creates the .env file locally in the GitHub runner environment first, then transfers it to the EC2 instance.
+
+2. **Added SCP Command**: Uses `scp` to securely copy the local temp.env file to the correct location on the EC2 instance. This avoids potential issues with heredoc escaping and variable expansion that can occur in SSH commands.
+
+3. **Simplified Process**: By separating the file creation from the file transfer, it's easier to debug if something goes wrong with either step.
+
+## Benefits:
+
+1. **More Reliable**: SCP is designed specifically for file transfers and handles them reliably.
+2. **Better Security**: The sensitive environment variables only exist temporarily on the GitHub runner and the target server.
+3. **Easier Troubleshooting**: If there's an issue with the .env file, you can more easily identify whether it's a creation problem or a transfer problem.
+
+Remember to keep all the same secrets in your GitHub repository settings, as the workflow still requires them.
+
+---
+
