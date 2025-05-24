@@ -35,23 +35,7 @@ jobs:
       run: |
         docker-compose --profile debug up -d
     
-    - name: Wait for database to be ready
-      run: |
-        echo "Waiting for PostgreSQL database to be ready..."
-        timeout=60
-        counter=0
-        while ! docker exec postgres_db pg_isready -U testuser > /dev/null 2>&1; do
-          if [ $counter -eq $timeout ]; then
-            echo "Timed out waiting for database"
-            docker-compose logs db
-            exit 1
-          fi
-          echo "Still waiting for database to be available... ($counter/$timeout)"
-          sleep 2
-          counter=$((counter + 2))
-        done
-        echo "PostgreSQL database is available!"
-    
+
     - name: Wait for services to be ready
       run: |
         # Wait for Flask app to become available
