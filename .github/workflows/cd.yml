@@ -75,4 +75,4 @@ jobs:
           docker-compose --profile production up -d --build
           
           echo "Deployment completed!"
-        EOF 
+        EOF
