@@ -61,7 +61,7 @@
                                      dropdown-toggle - Adds dropdown arrow indicator
                                      active - Highlights the current page in navigation
                                      data-bs-toggle="dropdown" - Activates dropdown behavior -->
-                                {{ city if city else 'City' }}
+                                {{ city | capitalize if city else 'City' }}
                                 <!-- Jinja2 template variable - Shows city name if available, else 'City' -->
                             </a>
                             
@@ -79,13 +79,13 @@
                         <li class="nav-item dropdown">
                             <!-- Second dropdown for category selection, structure same as city dropdown -->
                             <a class="nav-link dropdown-toggle active" href="#" id="categoryDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                {{ category if category else 'Category' }}
+                                {{ category | capitalize if category else 'Category' }}
                             </a>
                             <ul class="dropdown-menu" aria-labelledby="categoryDropdown">
                                 {% for category_option in ['restaurants', 'hotels', 'attractions'] %}
                                     <li>
                                         <a class="dropdown-item" href="{{ url_for('index', city=city, category=category_option) }}">
-                                            {{ category_option }}
+                                            {{ category_option | capitalize }}
                                         </a>
                                     </li>
                                 {% endfor %}
@@ -143,8 +143,13 @@
     </div>
 
     <!-- Main Content - Will be replaced by content from extending templates -->
-    {% block content %}
-    {% endblock %}  
+    <div class="card">
+        <img src="https://d368g9lw5ileu7.cloudfront.net/races/races-127xxx/127137/raceBanner-qZvNMCuU-bIk976.jpg">
+        <div class="card-body" align="center" >
+        {% block content %}
+        {% endblock %}
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer class="bg-light py-4 mt-5">
@@ -153,7 +158,7 @@
              mt-5 - Margin-top size 5 (creates space between content and footer) -->
         
         <div class="container">
-            <p class="text-center text-muted mb-0">© 2023 My Website. All rights reserved.</p>
+            <p class="text-center text-muted mb-0">© 2025 Ling-Hong Hung All rights reserved.</p>
             <!-- text-center - Centers text horizontally
                  text-muted - Grayed-out text color
                  mb-0 - No margin-bottom (removes default paragraph margin) -->

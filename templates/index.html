@@ -30,7 +30,7 @@
         /* Tooltip styling */
         .marker-tooltip {
             position: absolute;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(128, 128, 128, 0.7);
             color: #fff;
             padding: 5px 10px;
             border-radius: 4px;
@@ -38,9 +38,22 @@
             white-space: nowrap;
             pointer-events: none;
             transform: translate(-50%, -100%);
-            margin-top: -10px;
+            margin-top: -5px;
             z-index: 9999;
             display: none;
+        }
+        /* Custom carousel control styling */
+        .carousel-control-prev, .carousel-control-next {
+            background: transparent;
+            opacity: 1;
+        }
+        .carousel-control-prev-icon, .carousel-control-next-icon {
+            background-color: transparent;
+            filter: invert(15%) sepia(75%) saturate(5000%) hue-rotate(210deg) brightness(70%) contrast(110%);
+        }
+        /* Center card content */
+        .card-body {
+            text-align: center;
         }
     </style>
 {% endblock %}
@@ -201,7 +214,7 @@
 
             if (businesses && businesses.length > 0 && businesses[0].latitude && businesses[0].longitude) {
                 centerCoordinates = [parseFloat(businesses[0].longitude), parseFloat(businesses[0].latitude)];
-                zoomLevel = 12; // Zoom in if we have a specific location
+                zoomLevel = 15; // Zoom in if we have a specific location
             }
 
             map = new mapboxgl.Map({
